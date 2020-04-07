@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -32,11 +33,18 @@ import (
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/consensus"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/consensus/clique"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/consensus/ethash"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/consensus/pbft"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/core"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/core/bloombits"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/core/rawdb"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/core/types"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/core/vm"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/dpos"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/dpos/mempool"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/dpos/state"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/dpos/store"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/elanet"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/elanet/routes"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/eth/downloader"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/eth/filters"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/eth/gasprice"
@@ -52,6 +60,9 @@ import (
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/rlp"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/rpc"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/spv"
+
+
+	ep2p "github.com/elastos/Elastos.ELA/p2p"
 )
 
 type LesServer interface {
@@ -247,6 +258,9 @@ func makeExtraData(extra []byte) []byte {
 
 // CreateConsensusEngine creates the required type of consensus engine instance for an Ethereum service
 func CreateConsensusEngine(ctx *node.ServiceContext, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database) consensus.Engine {
+	if chainConfig.Dpos != nil && chainConfig.Dpos.EnableArbiter {
+		return pbft.New(chainConfig.Dpos, ctx)
+	}
 	// If proof-of-authority is requested, set it up
 	if chainConfig.Clique != nil {
 		return clique.New(chainConfig.Clique, db)
@@ -469,6 +483,15 @@ func (s *Ethereum) StartMining(threads int) error {
 			}
 			clique.Authorize(eb, wallet.SignData)
 		}
+		if pbft, ok := s.engine.(*pbft.PBFT); ok {
+			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+			if wallet == nil || err != nil {
+				log.Error("Etherbase account unavailable locally", "err", err)
+				return fmt.Errorf("signer missing: %v", err)
+			}
+			pbft.Authorize(eb, wallet.SignData)
+			s.SetPbftArbiter(wallet)
+		}
 		// If mining is started, we can disable the transaction rejection mechanism
 		// introduced to speed sync times.
 		atomic.StoreUint32(&s.protocolManager.acceptTxs, 1)
@@ -476,6 +499,61 @@ func (s *Ethereum) StartMining(threads int) error {
 		go s.miner.Start(eb)
 	}
 	return nil
+}
+
+func (s *Ethereum) SetPbftArbiter(account accounts.Wallet) {
+	engine := s.engine.(*pbft.PBFT)
+	dposCfg := engine.GetDposConfig()
+	var dposStore store.IDposStore
+	dposStore, err := store.NewDposStore(engine.GetDposStorePath())
+	if err != nil {
+		printErrorAndExit(err)
+	}
+	defer dposStore.Close()
+
+	blockMemPool := mempool.NewBlockPool()
+	//blockMemPool.Store = s.chainDb
+
+	arbiters, err := state.NewArbitrators(dposCfg)
+	if err != nil {
+		log.Error("state.NewArbitrators error:", err)
+		return
+	}
+
+	routesCfg := &routes.Config{}
+	act, err := s.Etherbase()
+	if err == nil {
+		routesCfg.PID = act.Bytes()
+		routesCfg.Addr = fmt.Sprintf("%s:%d",
+			dposCfg.IPAddress,
+			dposCfg.DPoSPort)
+		routesCfg.Sign = engine.GetSignFn()
+	}
+
+	route := routes.New(routesCfg)
+	server, err := elanet.NewServer(engine.GetDataDir(), &elanet.Config{
+		ChainParams:    dposCfg,
+		TxMemPool:      s.txPool,
+		BlockMemPool:   blockMemPool,
+		Routes:         route,
+	})
+
+	cfg := dpos.Config{
+		EnableEventLog:    true,
+		EnableEventRecord: false,
+		ChainParams:       engine.GetDposConfig(),
+		Arbitrators:       arbiters,
+		Store:             dposStore,
+		Server:            server,
+		TxMemPool:         s.txPool,
+		BlockMemPool:      blockMemPool,
+		Broadcast: func(msg ep2p.Message) {
+			server.BroadcastMessage(msg)
+		},
+		AnnounceAddr: route.AnnounceAddr,
+	}
+	arbiter := dpos.NewArbitrator(cfg, account)
+	engine.SetArbiter(arbiter)
 }
 
 // StopMining terminates the miner, both at the consensus engine level as well as
@@ -575,4 +653,9 @@ func (s *Ethereum) Stop() error {
 
 	close(s.shutdownChan)
 	return nil
+}
+
+func printErrorAndExit(err error) {
+	log.Error(err.Error())
+	os.Exit(-1)
 }

@@ -1,0 +1,469 @@
+// Copyright (c) 2017-2019 The Elastos Foundation
+// Use of this source code is governed by an MIT
+// license that can be found in the LICENSE file.
+// 
+
+package state
+
+import (
+	"bytes"
+	com "github.com/elastos/Elastos.ELA/common"
+	"math/rand"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/common"
+	dtypes "github.com/elastos/Elastos.ELA.SideChain.ETH/dpos/types"
+	"github.com/elastos/Elastos.ELA.SideChain.ETH/core/types"
+)
+
+func TestRewardData_Deserialize(t *testing.T) {
+	originData := randomRewardData()
+
+	buf := new(bytes.Buffer)
+	assert.NoError(t, originData.Serialize(buf))
+
+	cmpData := NewRewardData()
+	assert.NoError(t, cmpData.Deserialize(buf))
+
+	assert.True(t, rewardEqual(originData, cmpData))
+}
+
+func TestStateKeyFrame_Deserialize(t *testing.T) {
+	originFrame := randomStateKeyFrame()
+
+	buf := new(bytes.Buffer)
+	assert.NoError(t, originFrame.Serialize(buf))
+
+	cmpData := &StateKeyFrame{}
+	assert.NoError(t, cmpData.Deserialize(buf))
+
+	assert.True(t, stateKeyFrameEqual(originFrame, cmpData))
+}
+
+func TestCheckPoint_Deserialize(t *testing.T) {
+	originCheckPoint := generateCheckPoint(rand.Uint64())
+
+	buf := new(bytes.Buffer)
+	assert.NoError(t, originCheckPoint.Serialize(buf))
+
+	cmpData := &CheckPoint{}
+	assert.NoError(t, cmpData.Deserialize(buf))
+
+	assert.True(t, checkPointsEqual(originCheckPoint, cmpData))
+}
+
+func checkPointsEqual(first *CheckPoint, second *CheckPoint) bool {
+	if first.Height != second.Height || first.DutyIndex != second.DutyIndex ||
+		first.CurrentReward.TotalVotesInRound !=
+			second.CurrentReward.TotalVotesInRound ||
+		second.NextReward.TotalVotesInRound !=
+			second.NextReward.TotalVotesInRound {
+		return false
+	}
+
+	if !arrayEqual(first.CurrentArbitrators, second.CurrentArbitrators) ||
+		!arrayEqual(first.CurrentCandidates, second.CurrentCandidates) ||
+		!arrayEqual(first.NextArbitrators, second.NextArbitrators) ||
+		!arrayEqual(first.NextCandidates, second.NextCandidates) {
+		return false
+	}
+
+	//if !hashesEqual(first.CurrentReward.OwnerProgramHashes,
+	//	second.CurrentReward.OwnerProgramHashes) ||
+	//	!hashesEqual(first.CurrentReward.CandidateOwnerProgramHashes,
+	//		second.CurrentReward.CandidateOwnerProgramHashes) ||
+	//	!hashesEqual(first.NextReward.OwnerProgramHashes,
+	//		second.NextReward.OwnerProgramHashes) ||
+	//	!hashesEqual(first.NextReward.CandidateOwnerProgramHashes,
+	//		second.NextReward.CandidateOwnerProgramHashes) {
+	//	return false
+	//}
+	//
+	//if !stateKeyFrameEqual(&first.StateKeyFrame, &second.StateKeyFrame) {
+	//	return false
+	//}
+	//
+	//return votesMapEqual(first.CurrentReward.OwnerVotesInRound,
+	//	second.CurrentReward.OwnerVotesInRound) &&
+	//	votesMapEqual(first.NextReward.OwnerVotesInRound,
+	//		second.NextReward.OwnerVotesInRound)
+	return false
+}
+
+func generateCheckPoint(height uint64) *CheckPoint {
+	result := &CheckPoint{
+		Height:            height,
+		DutyIndex:         int(rand.Uint32()),
+		NextArbitrators:   [][]byte{},
+		NextCandidates:    [][]byte{},
+		CurrentCandidates: [][]byte{},
+		KeyFrame: KeyFrame{
+			CurrentArbitrators: [][]byte{},
+		},
+		CurrentReward: *NewRewardData(),
+		NextReward:    *NewRewardData(),
+		StateKeyFrame: *randomStateKeyFrame(),
+	}
+	result.CurrentReward.TotalVotesInRound = rand.Uint64()
+	result.NextReward.TotalVotesInRound = rand.Uint64()
+
+	for i := 0; i < 5; i++ {
+		result.CurrentArbitrators = append(result.CurrentArbitrators,
+			randomFakePK())
+		result.CurrentCandidates = append(result.CurrentCandidates, randomFakePK())
+		result.NextArbitrators = append(result.NextArbitrators, randomFakePK())
+		result.NextCandidates = append(result.NextCandidates, randomFakePK())
+
+		//result.CurrentReward.OwnerVotesInRound[*randomProgramHash()] = rand.Uint64()
+		//result.CurrentReward.OwnerProgramHashes = append(
+		//	result.CurrentReward.OwnerProgramHashes, randomProgramHash())
+		//result.CurrentReward.CandidateOwnerProgramHashes = append(
+		//	result.CurrentReward.CandidateOwnerProgramHashes, randomProgramHash())
+		//
+		//result.NextReward.OwnerVotesInRound[*randomProgramHash()] = rand.Uint64()
+		//result.NextReward.OwnerProgramHashes = append(
+		//	result.NextReward.OwnerProgramHashes, randomProgramHash())
+		//result.NextReward.CandidateOwnerProgramHashes = append(
+		//	result.NextReward.CandidateOwnerProgramHashes, randomProgramHash())
+	}
+
+	return result
+}
+
+func stateKeyFrameEqual(first *StateKeyFrame, second *StateKeyFrame) bool {
+
+	for k, vf := range first.NodeOwnerKeys {
+		vs, ok := second.NodeOwnerKeys[k]
+		if !ok {
+			return false
+		}
+		if vf != vs {
+			return false
+		}
+	}
+
+	for k, vf := range first.PendingProducers {
+		vs, ok := second.PendingProducers[k]
+		if !ok {
+			return false
+		}
+		if !producerEqual(vf, vs) {
+			return false
+		}
+	}
+
+	for k, vf := range first.ActivityProducers {
+		vs, ok := second.ActivityProducers[k]
+		if !ok {
+			return false
+		}
+		if !producerEqual(vf, vs) {
+			return false
+		}
+	}
+
+	for k, vf := range first.InactiveProducers {
+		vs, ok := second.InactiveProducers[k]
+		if !ok {
+			return false
+		}
+		if !producerEqual(vf, vs) {
+			return false
+		}
+	}
+
+	for k, vf := range first.CanceledProducers {
+		vs, ok := second.CanceledProducers[k]
+		if !ok {
+			return false
+		}
+		if !producerEqual(vf, vs) {
+			return false
+		}
+	}
+
+	for k, vf := range first.IllegalProducers {
+		vs, ok := second.IllegalProducers[k]
+		if !ok {
+			return false
+		}
+		if !producerEqual(vf, vs) {
+			return false
+		}
+	}
+
+	for k, vf := range first.PendingCanceledProducers {
+		vs, ok := second.PendingCanceledProducers[k]
+		if !ok {
+			return false
+		}
+		if !producerEqual(vf, vs) {
+			return false
+		}
+	}
+
+	for k := range first.Votes {
+		_, ok := second.Votes[k]
+		if !ok {
+			return false
+		}
+	}
+
+	for k := range first.DepositOutputs {
+		_, ok := second.DepositOutputs[k]
+		if !ok {
+			return false
+		}
+	}
+
+	for k := range first.Nicknames {
+		_, ok := second.Nicknames[k]
+		if !ok {
+			return false
+		}
+	}
+
+	for k := range first.SpecialTxHashes {
+		_, ok := second.SpecialTxHashes[k]
+		if !ok {
+			return false
+		}
+	}
+
+	for k := range first.PreBlockArbiters {
+		_, ok := second.PreBlockArbiters[k]
+		if !ok {
+			return false
+		}
+	}
+
+	for k := range first.EmergencyInactiveArbiters {
+		_, ok := second.EmergencyInactiveArbiters[k]
+		if !ok {
+			return false
+		}
+	}
+
+	return first.VersionStartHeight == second.VersionStartHeight &&
+		first.VersionEndHeight == second.VersionEndHeight
+}
+
+func randomStateKeyFrame() *StateKeyFrame {
+	result := &StateKeyFrame{
+		NodeOwnerKeys:             make(map[string]string),
+		PendingProducers:          make(map[string]*Producer),
+		ActivityProducers:         make(map[string]*Producer),
+		InactiveProducers:         make(map[string]*Producer),
+		CanceledProducers:         make(map[string]*Producer),
+		IllegalProducers:          make(map[string]*Producer),
+		PendingCanceledProducers:  make(map[string]*Producer),
+		Votes:                     make(map[string]*types.Output),
+		DepositOutputs:            make(map[string]*types.Output),
+		Nicknames:                 make(map[string]struct{}),
+		SpecialTxHashes:           make(map[common.Hash]struct{}),
+		PreBlockArbiters:          make(map[string]struct{}),
+		EmergencyInactiveArbiters: make(map[string]struct{}),
+		VersionStartHeight:        rand.Uint64(),
+		VersionEndHeight:          rand.Uint64(),
+	}
+
+	for i := 0; i < 5; i++ {
+		result.NodeOwnerKeys[randomString()] = randomString()
+		result.PendingProducers[randomString()] = randomProducer()
+		result.ActivityProducers[randomString()] = randomProducer()
+		result.InactiveProducers[randomString()] = randomProducer()
+		result.CanceledProducers[randomString()] = randomProducer()
+		result.IllegalProducers[randomString()] = randomProducer()
+		result.PendingCanceledProducers[randomString()] = randomProducer()
+		result.Votes[randomString()] = randomVotes()
+		result.DepositOutputs[randomString()] = randomVotes()
+		result.Nicknames[randomString()] = struct{}{}
+		result.SpecialTxHashes[*randomHash()] = struct{}{}
+		result.PreBlockArbiters[randomString()] = struct{}{}
+		result.EmergencyInactiveArbiters[randomString()] = struct{}{}
+	}
+	return result
+}
+
+func producerEqual(first *Producer, second *Producer) bool {
+	if first.state != second.state ||
+		first.registerHeight != second.registerHeight ||
+		first.cancelHeight != second.cancelHeight ||
+		first.inactiveCountingHeight != second.inactiveCountingHeight ||
+		first.inactiveSince != second.inactiveSince ||
+		first.activateRequestHeight != second.activateRequestHeight ||
+		first.illegalHeight != second.illegalHeight ||
+		first.penalty != second.penalty ||
+		first.votes != second.votes {
+		return false
+	}
+
+	return producerInfoEqual(&first.info, &second.info)
+}
+
+func producerInfoEqual(first *dtypes.ProducerInfo,
+	second *dtypes.ProducerInfo) bool {
+	if first.NickName != second.NickName ||
+		first.Url != second.Url ||
+		first.Location != second.Location ||
+		first.NetAddress != second.NetAddress {
+		return false
+	}
+
+	return bytes.Equal(first.OwnerPublicKey, second.OwnerPublicKey) &&
+		bytes.Equal(first.NodePublicKey, second.NodePublicKey) &&
+		bytes.Equal(first.Signature, second.Signature)
+}
+
+func rewardEqual(first *RewardData, second *RewardData) bool {
+	if first.TotalVotesInRound != second.TotalVotesInRound {
+		return false
+	}
+
+	if !hashesEqual(first.OwnerProgramHashes, second.OwnerProgramHashes) ||
+		!hashesEqual(first.CandidateOwnerProgramHashes,
+			second.CandidateOwnerProgramHashes) {
+		return false
+	}
+
+	return votesMapEqual(first.OwnerVotesInRound, second.OwnerVotesInRound)
+}
+
+func randomRewardData() *RewardData {
+	result := NewRewardData()
+
+	//for i := 0; i < 5; i++ {
+	//	result.OwnerProgramHashes = append(result.OwnerProgramHashes,
+	//		randomProgramHash())
+	//	result.CandidateOwnerProgramHashes = append(
+	//		result.CandidateOwnerProgramHashes, randomProgramHash())
+	//	result.OwnerVotesInRound[*randomProgramHash()] = rand.Uint64()
+	//}
+
+	return result
+}
+
+func randomVotes() *types.Output {
+	//return &types.Output{
+	//	AssetID:     *randomHash(),
+	//	Value:       common.Fixed64(rand.Uint64()),
+	//	OutputLock:  rand.Uint32(),
+	//	ProgramHash: *randomProgramHash(),
+	//	Type:        types.OTVote,
+	//	Payload: &outputpayload.VoteOutput{
+	//		Version: byte(rand.Uint32()),
+	//		Contents: []outputpayload.VoteContent{
+	//			{
+	//				VoteType: outputpayload.Delegate,
+	//				CandidateVotes: []outputpayload.CandidateVotes{
+	//					{randomFakePK(), 0},
+	//				},
+	//			},
+	//		},
+	//	},
+	//}
+}
+
+func randomHash() *common.Hash {
+	a := make([]byte, 32)
+	rand.Read(a)
+	hash := common.BytesToHash(a)
+	return &hash
+}
+
+func randomProgramHash() *com.Uint168 {
+	a := make([]byte, 21)
+	rand.Read(a)
+	hash, _ := com.Uint168FromBytes(a)
+	return hash
+}
+
+func randomString() string {
+	a := make([]byte, 20)
+	rand.Read(a)
+	return common.Bytes2Hex(a)
+}
+
+func randomBytes(len int) []byte {
+	a := make([]byte, len)
+	rand.Read(a)
+	return a
+}
+
+func randomProducer() *Producer {
+	return &Producer{
+		info: dtypes.ProducerInfo{
+			OwnerPublicKey: randomFakePK(),
+			NodePublicKey:  randomFakePK(),
+			NickName:       randomString(),
+			Url:            randomString(),
+			Location:       rand.Uint64(),
+			NetAddress:     randomString(),
+			Signature:      randomBytes(64),
+		},
+		state:                  ProducerState(rand.Uint32()),
+		registerHeight:         rand.Uint64(),
+		cancelHeight:           rand.Uint64(),
+		inactiveCountingHeight: rand.Uint64(),
+		inactiveSince:          rand.Uint64(),
+		activateRequestHeight:  rand.Uint64(),
+		illegalHeight:          rand.Uint64(),
+		penalty:                rand.Uint64(),
+		votes:                  rand.Uint64(),
+	}
+}
+
+func hashesEqual(first []*com.Uint168, second []*com.Uint168) bool {
+	if len(first) != len(second) {
+		return false
+	}
+
+	for _, vf := range first {
+		found := false
+		for _, vs := range second {
+			if vs.IsEqual(*vf) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func votesMapEqual(first map[com.Uint168]uint64,
+	second map[com.Uint168]uint64) bool {
+	if len(first) != len(second) {
+		return false
+	}
+
+	for k, vf := range first {
+		if vs, ok := second[k]; !ok || vs != vf {
+			return false
+		}
+	}
+	return true
+}
+
+func arrayEqual(first [][]byte, second [][]byte) bool {
+	if len(first) != len(second) {
+		return false
+	}
+
+	for _, vf := range first {
+		found := false
+		for _, vs := range second {
+			if bytes.Equal(vf, vs) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}

@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/common"
 	"github.com/elastos/Elastos.ELA.SideChain.ETH/crypto"
@@ -159,6 +160,21 @@ var (
 			Period: 15,
 			Epoch:  30000,
 		},
+		Dpos: &DposConfig{
+			EnableArbiter:            true,
+			Magic:                    0,
+			IPAddress:                "",
+			DPoSPort:                 0,
+			SignTolerance:            5,
+			OriginArbiters:           nil,
+			CRCArbiters:              nil,
+			NormalArbitratorsCount:   0,
+			CandidatesCount:          0,
+			EmergencyInactivePenalty: 0,
+			MaxInactiveRounds:        0,
+			InactivePenalty:          0,
+			PreConnectOffset:         0,
+		},
 	}
 
 	// RinkebyTrustedCheckpoint contains the light client trusted checkpoint for the Rinkeby test network.
@@ -228,16 +244,16 @@ var (
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(20), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, "", 0,  ""}
+	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(20), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, nil, "", 0,  ""}
 
 	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Clique consensus.
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(20), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, &CliqueConfig{Period: 0, Epoch: 30000}, "", 0,  ""}
+	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(20), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil, "", 0,  ""}
 
-	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(20), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, "", 0,  ""}
+	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(20), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, new(EthashConfig), nil, nil, "", 0,  ""}
 	TestRules       = TestChainConfig.Rules(new(big.Int))
 )
 
@@ -314,6 +330,7 @@ type ChainConfig struct {
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty"`
 	Clique *CliqueConfig `json:"clique,omitempty"`
+	Dpos   *DposConfig 	 `json:"dpos,omitempty"`
 
 	BlackContractAddr     string `json:"blackcontractaddr,omitempty"`
 	PassBalance           uint64 `json:"passbalance,omitempty"`
@@ -627,4 +644,28 @@ func (c *ChainConfig) Rules(num *big.Int) Rules {
 		IsIstanbul:       c.IsIstanbul(num),
 		IsChainIDFork:    c.IsChainIDFork(num),
 	}
+}
+
+
+// DposConfig is the consensus engine configs for dpos based sealing.
+type DposConfig struct {
+	EnableArbiter            bool           `json:"EnableArbiter"`
+	Magic                    uint32         `json:"Magic"`
+	IPAddress                string         `json:"IPAddress"`
+	DPoSPort                 uint16         `json:"DPoSPort"`
+	SignTolerance            time.Duration  `json:"SignTolerance"`
+	OriginArbiters           []string       `json:"OriginArbiters"`
+	CRCArbiters              []string       `json:"CRCArbiters"`
+	NormalArbitratorsCount   int            `json:"NormalArbitratorsCount"`
+	CandidatesCount          int            `json:"CandidatesCount"`
+	EmergencyInactivePenalty uint64 		`json:"EmergencyInactivePenalty"`
+	MaxInactiveRounds        uint32         `json:"MaxInactiveRounds"`
+	InactivePenalty          uint64 		`json:"InactivePenalty"`
+	PreConnectOffset         uint32         `json:"PreConnectOffset"`
+
+	DisableTxFilters bool
+	// DNSSeeds defines a list of DNS seeds for the network to discover peers.
+	DNSSeeds []string
+	// PermanentPeers defines peers seeds for node to initialize p2p connection.
+	PermanentPeers []string
 }
