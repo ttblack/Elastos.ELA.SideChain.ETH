@@ -326,7 +326,7 @@ func (t *udp) waitping(from enode.ID) error {
 func (t *udp) findnode(toid enode.ID, toaddr *net.UDPAddr, target encPubkey) ([]*node, error) {
 	// If we haven't seen a ping from the destination node for a while, it won't remember
 	// our endpoint proof and reject findnode. Solicit a ping first.
-	if time.Since(t.db.LastPingReceived(toid)) > bondExpiration {
+	if time.Since(t.db.LastPingReceived(toid, toaddr.IP)) > bondExpiration {
 		t.ping(toid, toaddr)
 		t.waitping(toid)
 	}
