@@ -457,8 +457,9 @@ func DefaultRinkebyGenesisBlock() *Genesis {
 func DefaultGoerliGenesisBlock() *Genesis {
 	ga := make(GenesisAlloc, 1)
 	acc1 := common.BytesToAddress(hexutil.MustDecode("0x53781e106a2e3378083bdcede1874e5c2a7225f8"))
-
-	ga[acc1] = GenesisAccount{Balance: big.NewInt(0).SetUint64(99999999999999999999999999)}
+	balance := new(big.Int)
+	balance.SetString("999999999999999999999999999", 10)
+	ga[acc1] = GenesisAccount{Balance: balance}
 
 	genesis := &Genesis{
 		Config:     params.GoerliChainConfig,
