@@ -246,6 +246,7 @@ func (pm *ProtocolManager) removePeer(id string) {
 	}
 	// Hard disconnect at the networking layer
 	if peer != nil {
+		log.Info("removePeer ETDonePeer Notify", "pid", peer.id)
 		go events.Notify(dpos.ETDonePeer, peer)
 		peer.Peer.Disconnect(p2p.DiscUselessPeer)
 	}
@@ -327,7 +328,7 @@ func (pm *ProtocolManager) handle(p *peer) error {
 		return err
 	}
 	defer pm.removePeer(p.id)
-
+	log.Info("handle ETNewPeer Notify", "pid", p.id)
 	go events.Notify(dpos.ETNewPeer, p)
 
 	// Register the peer in the downloader. If the downloader considers it banned, we disconnect
@@ -346,7 +347,7 @@ func (pm *ProtocolManager) handle(p *peer) error {
 		}
 		// Start a timer to disconnect if the peer doesn't reply in time
 		p.syncDrop = time.AfterFunc(syncChallengeTimeout, func() {
-			p.Log().Warn("Checkpoint challenge timed out, dropping", "addr", p.RemoteAddr(), "type", p.Name())
+			p.Log().Info("Checkpoint challenge timed out, dropping", "addr", p.RemoteAddr(), "type", p.Name())
 			pm.removePeer(p.id)
 		})
 		// Make sure it's cleaned up if the peer dies off
@@ -366,7 +367,7 @@ func (pm *ProtocolManager) handle(p *peer) error {
 	// Handle incoming messages until the connection is torn down
 	for {
 		if err := pm.handleMsg(p); err != nil {
-			p.Log().Debug("Ethereum message handling failed", "err", err)
+			p.Log().Info("Ethereum message handling failed", "err", err)
 			return err
 		}
 	}
@@ -748,6 +749,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		if err := msg.Decode(&elaMsg); err != nil {
 			return errResp(ErrDecode, "%v: %v", msg, err)
 		}
+		log.Info("handleMsg ETElaMsg Notify", "pid", p.id)
 		events.Notify(dpos.ETElaMsg, &dpos.MsgEvent{
 			ElaMsg: elaMsg,
 			Peer:  	p,

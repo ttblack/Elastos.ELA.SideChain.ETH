@@ -177,6 +177,7 @@ func New(cfg *params.PbftConfig, pbftKeystore string, password []byte, dataDir s
 			DataPath:    dposPath,
 			PublicKey:   accpubkey,
 			AnnounceAddr: func() {
+				log.Info("pbftNew AnnounceAddr Notify")
 				events.Notify(dpos.ETAnnounceAddr, nil)
 			},
 		})
