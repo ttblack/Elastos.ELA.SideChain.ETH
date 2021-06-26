@@ -430,6 +430,7 @@ func IteratorUnTransaction(from ethCommon.Address) {
 			}
 			fee, _, _ := FindOutputFeeAndaddressByTxHash(string(txHash))
 			if fee.Uint64() <= 0 {
+				log.Error("FindOutputFeeAndaddressByTxHash fee is 0")
 				break
 			}
 			err, finished := SendTransaction(from, string(txHash), fee)
@@ -578,6 +579,7 @@ func FindOutputFeeAndaddressByTxHash(transactionHash string) (*big.Int, ethCommo
 		log.Error("SpvServicedb Get Fee: ", "err", err, "elaHash", transactionHash)
 		return new(big.Int), emptyaddr, new(big.Int)
 	}
+	fmt.Println("FindOutputFeeAndaddressByTxHash fee", string(v))
 	fees := strings.Split(string(v), ",")
 	f, err := common.StringToFixed64(fees[0])
 	if err != nil {
@@ -855,4 +857,8 @@ func GetArbiters() ([]string, error) {
 		return nil, err
 	}
 	return producers, nil
+}
+
+func GetClient() *ethclient.Client {
+	return ipcClient
 }

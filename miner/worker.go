@@ -791,7 +791,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 				}
 			}
 		case core.ErrMainTxHashPresence:
-			log.Trace("ErrTxHashTooHigh  is returned if Main chain transaction has been processed", "sender", from)
+			log.Info("ErrTxHashTooHigh  is returned if Main chain transaction has been processed", "sender", from)
 			txs.Pop()
 			var addr common.Address
 			if tx.To() != nil {
@@ -800,6 +800,10 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 					core.RemoveLocalTx(w.eth.TxPool(), tx.Hash(), true, true)
 				}
 			}
+		case core.ErrRefunded:
+			log.Info("ErrRefunded  is returned", "sender", from)
+			txs.Pop()
+			core.RemoveLocalTx(w.eth.TxPool(), tx.Hash(), true, true)
 		case core.ErrNonceTooLow:
 			// New head notification data race between the transaction pool and miner, shift
 			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
